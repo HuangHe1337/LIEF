@@ -1,15 +1,13 @@
-name: Build LIEF Android AArch64 DEB and Release
+name: Build LIEF Android AArch64 DEB
 
 on:
   push:
     branches: [ "main", "master" ]
-    tags:
-      - 'v*' # 监听以 v 开头的 tag，例如 v1.0.0，触发发布
+    tags: [ 'v*' ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # 允许从网页端手动触发
+  workflow_dispatch:
 
-# 必须赋予 GITHUB_TOKEN 写入 contents 的权限，才能创建 Release 和上传文件
 permissions:
   contents: write
 
@@ -21,12 +19,18 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        submodules: recursive # LIEF 需要拉取子模块
+        submodules: recursive
 
     - name: Install Build Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build cmake dpkg-dev
+        sudo apt-get install -y ninja-build cmake dpkg-dev ccache
+
+    # 开启编译缓存，加速重复构建
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ runner.os }}-android-lief
 
     - name: Configure CMake
       run: |
@@ -36,9 +40,9 @@ jobs:
           -DANDROID_PLATFORM=android-28 \
           -DCMAKE_BUILD_TYPE=Release \
           -DLIEF_INSTALL=ON \
+          -DLIEF_USE_CCACHE=ON \
           -DCPACK_GENERATOR=DEB \
-          -DCMAKE_INSTALL_PREFIX=/usr 
-          # 💡 如果是给 Termux 用，把上一行改成: -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr
+          -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr
 
     - name: Build
       run: cmake --build build --config Release
@@ -48,17 +52,15 @@ jobs:
         cd build
         cpack -G DEB
 
-    - name: Upload Artifact (Artifacts 会保留在每次的 Action 运行记录中)
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: lief-android-aarch64-deb
         path: build/*.deb
-        if-no-files-found: error
 
     - name: Upload to GitHub Release
-      # 仅在推送 tag 时（例如 git tag v1.0.0 && git push --tags）才执行上传 Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         files: build/*.deb
-        generate_release_notes: true # 自动根据 commit 生成 release notes
+        generate_release_notes: true
