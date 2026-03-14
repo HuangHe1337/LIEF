@@ -37,7 +37,7 @@ jobs:
           NDK_PATH=$(pwd)/android-ndk-${{ inputs.ndk_version }}
           echo "NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
 
-       - name: Configure CMake
+      - name: Configure CMake
         run: |
           mkdir -p build
           cmake -G Ninja -B build \
