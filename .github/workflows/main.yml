@@ -37,7 +37,7 @@ jobs:
           NDK_PATH=$(pwd)/android-ndk-${{ inputs.ndk_version }}
           echo "NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
 
-      - name: Configure CMake
+       - name: Configure CMake
         run: |
           mkdir -p build
           cmake -G Ninja -B build \
@@ -50,8 +50,11 @@ jobs:
             -DLIEF_EXAMPLES=OFF \
             -DLIEF_TESTS=OFF \
             -DCPACK_GENERATOR=DEB \
-            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=arm64 \
-            -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=aarch64 \
+            -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr \
+            -DCPACK_SET_DESTDIR=OFF \
+            -DCPACK_PACKAGING_INSTALL_PREFIX=/data/data/com.termux/files/usr
+
 
       - name: Build & Package
         run: |
