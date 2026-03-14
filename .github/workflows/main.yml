@@ -1,66 +1,80 @@
-name: Build LIEF Android AArch64 DEB
+name: Build LIEF (Android AArch64) - Professional DEB
 
 on:
-  push:
-    branches: [ "main", "master" ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
+    inputs:
+      ndk_version:
+        description: "Android NDK Version"
+        default: 'r27c'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build-deb:
+  build-lief:
+    name: Build LIEF for Android
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
-    - name: Install Build Tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ninja-build cmake dpkg-dev ccache
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake build-essential dpkg-dev
 
-    # 开启编译缓存，加速重复构建
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ${{ runner.os }}-android-lief
+      - name: Setup NDK
+        run: |
+          # 仿照 OLLVM 脚本下载 NDK
+          curl -sSfL -o android-ndk.zip "https://dl.google.com/android/repository/android-ndk-${{ inputs.ndk_version }}-linux.zip"
+          unzip -qq android-ndk.zip
+          # 获取 NDK 的绝对路径并写入环境变量
+          NDK_PATH=$(pwd)/android-ndk-${{ inputs.ndk_version }}
+          echo "NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
 
-    - name: Configure CMake
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_LATEST_HOME }}/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-28 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DLIEF_INSTALL=ON \
-          -DLIEF_USE_CCACHE=ON \
-          -DCPACK_GENERATOR=DEB \
-          -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr
+      - name: Configure CMake
+        run: |
+          # 确保目录存在
+          mkdir -p build
+          
+          # 使用 ${{ env.NDK_ROOT }} 引用上面设置的路径
+          # CMAKE_INSTALL_PREFIX 设为 Termux 标准路径
+          cmake -G Ninja -B build \
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLIEF_INSTALL=ON \
+            -DLIEF_EXAMPLES=OFF \
+            -DLIEF_TESTS=OFF \
+            -DCPACK_GENERATOR=DEB \
+            -DCMAKE_INSTALL_PREFIX=/data/data/com.termux/files/usr
 
-    - name: Build
-      run: cmake --build build --config Release
+      - name: Build & Package
+        run: |
+          cmake --build build -j$(nproc)
+          cd build && cpack -G DEB
 
-    - name: Package DEB
-      run: |
-        cd build
-        cpack -G DEB
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: lief-v${{ github.run_number }}
+          name: LIEF Android AArch64 (NDK ${{ inputs.ndk_version }})
+          body: |
+            LIEF build for Android (AArch64).
+            
+            **Details:**
+            - **NDK Version:** `${{ inputs.ndk_version }}`
+            - **Prefix:** `/data/data/com.termux/files/usr` (Termux Compatible)
+            - **STL:** `c++_static`
+          files: build/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: lief-android-aarch64-deb
-        path: build/*.deb
-
-    - name: Upload to GitHub Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: build/*.deb
-        generate_release_notes: true
